@@ -302,7 +302,9 @@ fn drag_connector(
     mut noodles: Query<&mut Noodle>,
     mut commands: Commands,
     mut current_connector: Local<Option<CurrentConnector>>,
+    window: Query<&Window>,
 ) -> Result {
+    let window = window.single()?;
     if let Some(CurrentConnector { connector, noodle }) = *current_connector {
         let (_connector, interaction) = connectors.get(connector)?;
         if !matches!(interaction, Interaction::Pressed) {
@@ -311,7 +313,9 @@ fn drag_connector(
         } else {
             let mut noodle = noodles.get_mut(noodle)?;
             noodle.end = match noodle.end {
-                NoodleEnd::Hanging(pos) => NoodleEnd::Hanging(pos + Vec2::new(1.0, 0.0)),
+                NoodleEnd::Hanging(pos) => {
+                    NoodleEnd::Hanging(window.cursor_position().unwrap_or(pos))
+                }
                 _ => unreachable!(),
             };
         }
@@ -321,7 +325,7 @@ fn drag_connector(
                 let noodle = commands
                     .spawn(Noodle {
                         start: NoodleEnd::Connector(connector),
-                        end: NoodleEnd::Hanging(Vec2::ZERO),
+                        end: NoodleEnd::Hanging(window.cursor_position().unwrap_or_default()),
                     })
                     .id();
                 *current_connector = Some(CurrentConnector { connector, noodle });
