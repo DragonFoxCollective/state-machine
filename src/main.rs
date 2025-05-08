@@ -1,6 +1,7 @@
 use bevy::color::palettes::css;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
+use bevy::ui::FocusPolicy;
 use itertools::Itertools as _;
 use rand::distr::{Distribution, StandardUniform};
 use uuid::Uuid;
@@ -15,6 +16,7 @@ fn main() {
                 update_side_panel.run_if(resource_changed::<StateTypes>),
                 update_nodes,
                 draw_noodle,
+                drag_connector,
             ),
         )
         .add_systems(Update, quit_on_esc)
@@ -44,6 +46,7 @@ fn setup(mut commands: Commands) {
             BackgroundColor(css::DARK_GRAY.into()),
             BorderColor(css::GRAY.into()),
             BorderRadius::right(Val::Px(10.0)),
+            FocusPolicy::Block,
             ChildOf(root),
         ))
         .id();
@@ -104,6 +107,7 @@ fn setup(mut commands: Commands) {
                 value: true,
             },
         ]),
+        Button,
         ChildOf(main_space),
     ));
 }
@@ -176,8 +180,6 @@ fn update_nodes(
     for (node, state) in nodes.iter() {
         commands.entity(node).despawn_related::<Children>();
 
-        let mut last_connector = None;
-
         for (state_name, state_value) in state
             .0
             .iter()
@@ -203,7 +205,7 @@ fn update_nodes(
                 })
                 .id();
 
-            let connector = commands
+            let _connector = commands
                 .spawn((
                     Node {
                         width: Val::Px(15.0),
@@ -220,20 +222,11 @@ fn update_nodes(
                     }),
                     BorderRadius::all(Val::Percent(100.0)),
                     BorderColor(css::BLACK.into()),
+                    Connector,
+                    Button,
                     ChildOf(connector_anchor),
                 ))
                 .id();
-
-            if let Some(last_connector) = last_connector {
-                commands.spawn((
-                    Noodle {
-                        start: NoodleEnd::Connector(last_connector),
-                        end: NoodleEnd::Connector(connector),
-                    },
-                    ChildOf(node),
-                ));
-            }
-            last_connector = Some(connector);
 
             commands
                 .spawn((
@@ -296,6 +289,47 @@ fn draw_noodle(
             Color::srgb(1.0, 1.0, 1.0),
         );
     }
+    Ok(())
+}
+
+struct CurrentConnector {
+    connector: Entity,
+    noodle: Entity,
+}
+
+fn drag_connector(
+    connectors: Query<(Entity, &Interaction), With<Connector>>,
+    mut noodles: Query<&mut Noodle>,
+    mut commands: Commands,
+    mut current_connector: Local<Option<CurrentConnector>>,
+) -> Result {
+    if let Some(CurrentConnector { connector, noodle }) = *current_connector {
+        let (_connector, interaction) = connectors.get(connector)?;
+        if !matches!(interaction, Interaction::Pressed) {
+            commands.entity(noodle).despawn();
+            *current_connector = None;
+        } else {
+            let mut noodle = noodles.get_mut(noodle)?;
+            noodle.end = match noodle.end {
+                NoodleEnd::Hanging(pos) => NoodleEnd::Hanging(pos + Vec2::new(1.0, 0.0)),
+                _ => unreachable!(),
+            };
+        }
+    } else {
+        for (connector, interaction) in connectors.iter() {
+            if matches!(interaction, Interaction::Pressed) {
+                let noodle = commands
+                    .spawn(Noodle {
+                        start: NoodleEnd::Connector(connector),
+                        end: NoodleEnd::Hanging(Vec2::ZERO),
+                    })
+                    .id();
+                *current_connector = Some(CurrentConnector { connector, noodle });
+                return Ok(());
+            }
+        }
+    }
+
     Ok(())
 }
 
