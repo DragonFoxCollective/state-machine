@@ -14,6 +14,7 @@ fn main() {
             (
                 update_side_panel.run_if(resource_changed::<StateTypes>),
                 update_nodes,
+                draw_noodle,
             ),
         )
         .add_systems(Update, quit_on_esc)
@@ -175,6 +176,8 @@ fn update_nodes(
     for (node, state) in nodes.iter() {
         commands.entity(node).despawn_related::<Children>();
 
+        let mut last_connector = None;
+
         for (state_name, state_value) in state
             .0
             .iter()
@@ -193,12 +196,21 @@ fn update_nodes(
                 ))
                 .id();
 
+            let connector_anchor = commands
+                .spawn(Node {
+                    height: Val::Percent(50.0),
+                    ..default()
+                })
+                .id();
+
             let connector = commands
                 .spawn((
                     Node {
                         width: Val::Px(15.0),
                         height: Val::Px(15.0),
                         border: UiRect::all(Val::Px(3.0)),
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(15.0),
                         ..default()
                     },
                     BackgroundColor(if state_value.value {
@@ -208,8 +220,20 @@ fn update_nodes(
                     }),
                     BorderRadius::all(Val::Percent(100.0)),
                     BorderColor(css::BLACK.into()),
+                    ChildOf(connector_anchor),
                 ))
                 .id();
+
+            if let Some(last_connector) = last_connector {
+                commands.spawn((
+                    Noodle {
+                        start: NoodleEnd::Connector(last_connector),
+                        end: NoodleEnd::Connector(connector),
+                    },
+                    ChildOf(node),
+                ));
+            }
+            last_connector = Some(connector);
 
             commands
                 .spawn((
@@ -220,9 +244,59 @@ fn update_nodes(
                     ChildOf(node),
                 ))
                 .add_child(text)
-                .add_child(connector);
+                .add_child(connector_anchor);
         }
     }
+}
+
+enum NoodleEnd {
+    Hanging(Vec2),
+    Connector(Entity),
+}
+
+#[derive(Component)]
+struct Noodle {
+    start: NoodleEnd,
+    end: NoodleEnd,
+}
+
+#[derive(Component)]
+struct Connector;
+
+fn draw_noodle(
+    noodles: Query<&Noodle>,
+    node_ends: Query<&GlobalTransform>,
+    window: Query<&Window>,
+    mut gizmos: Gizmos,
+) -> Result {
+    let window = window.single()?;
+    for noodle in noodles.iter() {
+        let start = (match noodle.start {
+            NoodleEnd::Hanging(pos) => pos,
+            NoodleEnd::Connector(entity) => node_ends.get(entity)?.translation().xy(),
+        } - window.size() / 2.0)
+            * Vec2::new(1.0, -1.0);
+
+        let end = (match noodle.end {
+            NoodleEnd::Hanging(pos) => pos,
+            NoodleEnd::Connector(entity) => node_ends.get(entity)?.translation().xy(),
+        } - window.size() / 2.0)
+            * Vec2::new(1.0, -1.0);
+
+        let bezier = CubicBezier::new([[
+            start,
+            start + Vec2::new(100.0, 0.0),
+            end - Vec2::new(100.0, 0.0),
+            end,
+        ]]);
+        let curve = bezier.to_curve().unwrap();
+        let resolution = 100 * curve.segments().len();
+        gizmos.linestrip(
+            curve.iter_positions(resolution).map(|pt| pt.extend(0.0)),
+            Color::srgb(1.0, 1.0, 1.0),
+        );
+    }
+    Ok(())
 }
 
 fn quit_on_esc(mut exit: EventWriter<AppExit>, keyboard_input: Res<ButtonInput<KeyCode>>) {
