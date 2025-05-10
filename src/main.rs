@@ -73,9 +73,9 @@ fn setup(mut commands: Commands) {
         ))
         .id();
 
-    let state_type_1 = StateTypeData::new("State Type 1");
+    let state_type_1 = StateTypeData::new("Move Input Held");
     let state_type_1_id = state_type_1.id.clone();
-    let state_type_2 = StateTypeData::new("State Type 2");
+    let state_type_2 = StateTypeData::new("Jump Input Held");
     let state_type_2_id = state_type_2.id.clone();
 
     let mut state_types = StateTypes::default();
@@ -83,32 +83,42 @@ fn setup(mut commands: Commands) {
     state_types.insert(state_type_2);
     commands.insert_resource(state_types);
 
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(50.0),
-            left: Val::Px(50.0),
-            border: UiRect::all(Val::Px(10.0)),
-            padding: UiRect::all(Val::Px(10.0)),
-            flex_direction: FlexDirection::Column,
-            ..default()
-        },
-        BackgroundColor(css::MAROON.into()),
-        BorderColor(css::RED.into()),
-        BorderRadius::all(Val::Px(10.0)),
-        State(vec![
-            StateValue {
-                state: state_type_1_id,
-                value: false,
+    for (name, position, state_1, state_2) in [
+        ("Idle", Vec2::new(50.0, 50.0), false, false),
+        ("Hovering", Vec2::new(50.0, 250.0), true, true),
+        ("Walking", Vec2::new(500.0, 100.0), true, false),
+        ("Jumping", Vec2::new(500.0, 300.0), false, true),
+    ] {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(position.x),
+                top: Val::Px(position.y),
+                border: UiRect::all(Val::Px(10.0)),
+                padding: UiRect::all(Val::Px(10.0)),
+                flex_direction: FlexDirection::Column,
+                ..default()
             },
-            StateValue {
-                state: state_type_2_id,
-                value: true,
+            BackgroundColor(css::MAROON.into()),
+            BorderColor(css::RED.into()),
+            BorderRadius::all(Val::Px(10.0)),
+            State {
+                name: name.to_string(),
+                state: vec![
+                    StateValue {
+                        state: state_type_1_id.clone(),
+                        value: state_1,
+                    },
+                    StateValue {
+                        state: state_type_2_id.clone(),
+                        value: state_2,
+                    },
+                ],
             },
-        ]),
-        Button,
-        ChildOf(main_space),
-    ));
+            Button,
+            ChildOf(main_space),
+        ));
+    }
 }
 
 #[derive(Resource, Debug, Default)]
@@ -151,7 +161,10 @@ pub struct StateValue {
 }
 
 #[derive(Component, Clone, Debug)]
-pub struct State(pub Vec<StateValue>);
+pub struct State {
+    pub name: String,
+    pub state: Vec<StateValue>,
+}
 
 #[derive(Component)]
 #[require(Text)]
@@ -179,6 +192,8 @@ fn update_nodes(
     for (node, state) in nodes.iter() {
         commands.entity(node).despawn_related::<Children>();
 
+        commands.spawn((Text(state.name.clone()), ChildOf(node)));
+
         let _enter_connector = commands
             .spawn((
                 Node {
@@ -203,7 +218,7 @@ fn update_nodes(
             .id();
 
         for (state_name, state_value) in state
-            .0
+            .state
             .iter()
             .map(|value| (state_types.0.get(&value.state).unwrap().name.clone(), value))
             .sorted_by_key(|(name, _)| name.clone())
