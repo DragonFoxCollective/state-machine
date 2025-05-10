@@ -1,6 +1,4 @@
 use bevy::color::palettes::css;
-use bevy::ecs::component::HookContext;
-use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -21,6 +19,7 @@ fn main() {
             ),
         )
         .add_systems(Update, quit_on_esc)
+        .add_observer(add_connector_observers)
         .run();
 }
 
@@ -294,7 +293,6 @@ enum Noodle {
 }
 
 #[derive(Component)]
-#[component(on_add = add_connector_observers)]
 enum Connector {
     Enter,
     Exit,
@@ -351,10 +349,9 @@ struct DraggedConnector {
     noodle: Entity,
 }
 
-fn add_connector_observers(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
-    world
-        .commands()
-        .entity(entity)
+fn add_connector_observers(trigger: Trigger<OnAdd, Connector>, mut commands: Commands) {
+    commands
+        .entity(trigger.target())
         .observe(start_dragging_connector)
         .observe(be_dragging_connector)
         .observe(drag_and_drop_connector)
