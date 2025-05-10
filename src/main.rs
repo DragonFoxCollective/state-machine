@@ -1,4 +1,6 @@
 use bevy::color::palettes::css;
+use bevy::ecs::component::HookContext;
+use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -211,10 +213,6 @@ fn update_nodes(
                 Button,
                 ChildOf(node),
             ))
-            .observe(start_dragging_connector)
-            .observe(be_dragging_connector)
-            .observe(drag_and_drop_connector)
-            .observe(stop_dragging_connector)
             .id();
 
         for (state_name, state_value) in state
@@ -263,10 +261,6 @@ fn update_nodes(
                     Button,
                     ChildOf(connector_anchor),
                 ))
-                .observe(start_dragging_connector)
-                .observe(be_dragging_connector)
-                .observe(drag_and_drop_connector)
-                .observe(stop_dragging_connector)
                 .id();
 
             commands
@@ -300,6 +294,7 @@ enum Noodle {
 }
 
 #[derive(Component)]
+#[component(on_add = add_connector_observers)]
 enum Connector {
     Enter,
     Exit,
@@ -354,6 +349,16 @@ fn draw_noodle(
 #[derive(Component)]
 struct DraggedConnector {
     noodle: Entity,
+}
+
+fn add_connector_observers(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
+    world
+        .commands()
+        .entity(entity)
+        .observe(start_dragging_connector)
+        .observe(be_dragging_connector)
+        .observe(drag_and_drop_connector)
+        .observe(stop_dragging_connector);
 }
 
 fn start_dragging_connector(
