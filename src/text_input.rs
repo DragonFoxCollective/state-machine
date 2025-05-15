@@ -7,7 +7,8 @@ impl Plugin for TextInputPlugin {
         app.add_systems(
             Update,
             (focus_text_fields_mouse, focus_text_fields_keyboard).in_set(TextInputSystemSet),
-        );
+        )
+        .add_observer(add_text_to_input);
     }
 }
 
@@ -23,6 +24,9 @@ pub struct TextInputUnfocused;
 
 #[derive(Event, Debug, Default)]
 pub struct TextInputSubmitted;
+
+#[derive(Component, Debug)]
+struct TextInputText(Entity);
 
 #[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TextInputActive {
@@ -76,4 +80,20 @@ fn focus_text_fields_keyboard(
             }
         }
     }
+}
+
+fn add_text_to_input(
+    trigger: Trigger<OnAdd, TextInput>,
+    text_inputs: Query<&TextInput>,
+    mut commands: Commands,
+) -> Result {
+    let text_input_entity = trigger.target();
+    let text_input = text_inputs.get(text_input_entity)?;
+    let text_input_text_entity = commands
+        .spawn((Text(text_input.0.clone()), ChildOf(text_input_entity)))
+        .id();
+    commands
+        .entity(text_input_entity)
+        .insert(TextInputText(text_input_text_entity));
+    Ok(())
 }
