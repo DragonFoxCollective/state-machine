@@ -20,6 +20,7 @@ fn main() {
         )
         .add_systems(Update, quit_on_esc)
         .add_observer(add_connector_observers)
+        .add_observer(add_node_observers)
         .run();
 }
 
@@ -74,9 +75,9 @@ fn setup(mut commands: Commands) {
         ))
         .id();
 
-    let state_type_1 = StateTypeData::new("Move Input Held");
+    let state_type_1 = StateTypeData::new("Move Input Held", StateType::Bool);
     let state_type_1_id = state_type_1.id.clone();
-    let state_type_2 = StateTypeData::new("Jump Input Held");
+    let state_type_2 = StateTypeData::new("Jump Input Held", StateType::Bool);
     let state_type_2_id = state_type_2.id.clone();
 
     let mut state_types = StateTypes::default();
@@ -108,11 +109,11 @@ fn setup(mut commands: Commands) {
                 state: vec![
                     StateValue {
                         state: state_type_1_id.clone(),
-                        value: state_1,
+                        value: StateTypeValue::Bool(state_1),
                     },
                     StateValue {
                         state: state_type_2_id.clone(),
-                        value: state_2,
+                        value: StateTypeValue::Bool(state_2),
                     },
                 ],
             },
@@ -123,7 +124,7 @@ fn setup(mut commands: Commands) {
 }
 
 #[derive(Resource, Debug, Default)]
-pub struct StateTypes(HashMap<StateType, StateTypeData>);
+pub struct StateTypes(HashMap<StateId, StateTypeData>);
 
 impl StateTypes {
     pub fn insert(&mut self, state_type: StateTypeData) {
@@ -132,33 +133,45 @@ impl StateTypes {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StateType(Uuid);
+pub struct StateId(Uuid);
 
-impl Distribution<StateType> for StandardUniform {
-    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> StateType {
-        StateType(Uuid::from_u128(rng.random()))
+#[derive(Debug)]
+pub enum StateType {
+    Bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum StateTypeValue {
+    Bool(bool),
+}
+
+impl Distribution<StateId> for StandardUniform {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> StateId {
+        StateId(Uuid::from_u128(rng.random()))
     }
 }
 
 #[derive(Debug)]
 pub struct StateTypeData {
-    pub id: StateType,
+    pub id: StateId,
     pub name: String,
+    pub state_type: StateType,
 }
 
 impl StateTypeData {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: impl ToString, state_type: StateType) -> Self {
         Self {
             id: rand::random(),
             name: name.to_string(),
+            state_type,
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct StateValue {
-    pub state: StateType,
-    pub value: bool,
+    pub state: StateId,
+    pub value: StateTypeValue,
 }
 
 #[derive(Component, Clone, Debug)]
@@ -224,10 +237,14 @@ fn update_nodes(
                 .spawn((
                     Text(state_name),
                     Node::default(),
-                    TextColor(if state_value.value {
-                        css::GREEN.into()
-                    } else {
-                        css::RED.into()
+                    TextColor(match state_value.value {
+                        StateTypeValue::Bool(value) => {
+                            if value {
+                                css::GREEN.into()
+                            } else {
+                                css::RED.into()
+                            }
+                        }
                     }),
                 ))
                 .id();
@@ -249,10 +266,14 @@ fn update_nodes(
                         left: Val::Px(15.0),
                         ..default()
                     },
-                    BackgroundColor(if state_value.value {
-                        css::RED.into()
-                    } else {
-                        css::GREEN.into()
+                    BackgroundColor(match state_value.value {
+                        StateTypeValue::Bool(value) => {
+                            if value {
+                                css::GREEN.into()
+                            } else {
+                                css::RED.into()
+                            }
+                        }
                     }),
                     BorderRadius::all(Val::Percent(100.0)),
                     BorderColor(css::BLACK.into()),
@@ -347,6 +368,10 @@ fn draw_noodle(
 #[derive(Component)]
 struct DraggedConnector {
     noodle: Entity,
+}
+
+fn add_node_observers(trigger: Trigger<OnAdd, State>, mut commands: Commands) {
+    commands.entity(trigger.target()).observe(be_dragging_node);
 }
 
 fn add_connector_observers(trigger: Trigger<OnAdd, Connector>, mut commands: Commands) {
@@ -473,6 +498,37 @@ fn stop_dragging_connector(
     commands.entity(noodle).despawn();
     commands.entity(connector).remove::<DraggedConnector>();
 
+    Ok(())
+}
+
+fn be_dragging_node(
+    trigger: Trigger<Pointer<Drag>>,
+    mut nodes: Query<&mut Node>,
+    children: Query<&Children>,
+    interactions: Query<&Interaction>,
+) -> Result {
+    let node = trigger.target();
+    if children.iter_descendants(node).any(|child| {
+        interactions
+            .get(child)
+            .is_ok_and(|i| !matches!(i, Interaction::None))
+    }) {
+        return Ok(());
+    }
+
+    let mut node = nodes.get_mut(node)?;
+    node.left = Val::Px(
+        match node.left {
+            Val::Px(x) => x,
+            _ => unreachable!(),
+        } + trigger.delta.x,
+    );
+    node.top = Val::Px(
+        match node.top {
+            Val::Px(y) => y,
+            _ => unreachable!(),
+        } + trigger.delta.y,
+    );
     Ok(())
 }
 
