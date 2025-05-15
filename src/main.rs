@@ -3,7 +3,6 @@ use bevy::log::LogPlugin;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
-use itertools::Itertools as _;
 use rand::distr::{Distribution, StandardUniform};
 use text_input::{TextInput, TextInputFocused, TextInputPlugin, TextInputUnfocused};
 use uuid::Uuid;
@@ -25,6 +24,7 @@ fn main() {
         .add_observer(add_state_to_side_panel)
         .add_observer(remove_state_from_side_panel)
         .add_observer(update_side_panel_state_name)
+        .add_observer(update_node_state_name)
         .run();
 }
 
@@ -198,6 +198,9 @@ pub struct SidePanel;
 #[derive(Component)]
 pub struct StateNameTextInput(pub StateId);
 
+#[derive(Component)]
+pub struct StateNameNodeText(pub StateId);
+
 #[derive(Event)]
 pub struct StateTypeAdded {
     pub state_type: StateId,
@@ -268,6 +271,18 @@ fn update_side_panel_state_name(
         .filter(|(state_name_text_input, _)| state_name_text_input.0 == trigger.state_type)
     {
         text_input.0 = trigger.name.clone();
+    }
+}
+
+fn update_node_state_name(
+    trigger: Trigger<StateTypeNameChanged>,
+    mut state_name_text_inputs: Query<(&StateNameNodeText, &mut Text)>,
+) {
+    for (_, mut text) in state_name_text_inputs
+        .iter_mut()
+        .filter(|(state_name_text_input, _)| state_name_text_input.0 == trigger.state_type)
+    {
+        text.0 = trigger.name.clone();
     }
 }
 
@@ -344,68 +359,63 @@ fn update_nodes(
             .state
             .iter()
             .map(|value| (state_types.0.get(&value.state).unwrap().name.clone(), value))
-            .sorted_by_key(|(name, _)| name.clone())
         {
-            let text = commands
-                .spawn((
-                    Text(state_name),
-                    Node::default(),
-                    TextColor(match state_value.value {
-                        StateTypeValue::Bool(value) => {
-                            if value {
-                                css::GREEN.into()
-                            } else {
-                                css::RED.into()
-                            }
-                        }
-                    }),
-                ))
-                .id();
-
-            let connector_anchor = commands
-                .spawn(Node {
-                    height: Val::Percent(50.0),
+            commands.spawn((
+                Node {
+                    align_items: AlignItems::Center,
                     ..default()
-                })
-                .id();
-
-            let _connector = commands
-                .spawn((
-                    Node {
-                        width: Val::Px(15.0),
-                        height: Val::Px(15.0),
-                        border: UiRect::all(Val::Px(3.0)),
-                        position_type: PositionType::Absolute,
-                        left: Val::Px(15.0),
-                        ..default()
-                    },
-                    BackgroundColor(match state_value.value {
-                        StateTypeValue::Bool(value) => {
-                            if value {
-                                css::GREEN.into()
-                            } else {
-                                css::RED.into()
+                },
+                ChildOf(node),
+                children![
+                    (
+                        Text(state_name),
+                        Node::default(),
+                        TextColor(match state_value.value {
+                            StateTypeValue::Bool(value) => {
+                                if value {
+                                    css::GREEN.into()
+                                } else {
+                                    css::RED.into()
+                                }
                             }
-                        }
-                    }),
-                    BorderRadius::all(Val::Percent(100.0)),
-                    BorderColor(css::BLACK.into()),
-                    Connector::Exit,
-                    Button,
-                    ChildOf(connector_anchor),
-                ))
-                .id();
-
-            commands
-                .spawn((
-                    Node {
-                        align_items: AlignItems::Center,
+                        }),
+                        StateNameNodeText(state_value.state.clone()),
+                    ),
+                    (Node {
+                        flex_grow: 1.0,
                         ..default()
-                    },
-                    ChildOf(node),
-                ))
-                .add_child(text)
-                .add_child(connector_anchor);
+                    },),
+                    (
+                        Node {
+                            height: Val::Percent(50.0),
+                            ..default()
+                        },
+                        children![(
+                            Node {
+                                width: Val::Px(15.0),
+                                height: Val::Px(15.0),
+                                border: UiRect::all(Val::Px(3.0)),
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(15.0),
+                                ..default()
+                            },
+                            BackgroundColor(match state_value.value {
+                                StateTypeValue::Bool(value) => {
+                                    if value {
+                                        css::GREEN.into()
+                                    } else {
+                                        css::RED.into()
+                                    }
+                                }
+                            }),
+                            BorderRadius::all(Val::Percent(100.0)),
+                            BorderColor(css::BLACK.into()),
+                            Connector::Exit,
+                            Button,
+                        ),]
+                    ),
+                ],
+            ));
         }
     }
 }

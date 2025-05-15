@@ -138,7 +138,7 @@ fn keyboard_input(
                     text_input.0.push(' ');
                 }
 
-                Key::Escape | Key::Enter => {}
+                Key::Escape | Key::Enter | Key::Shift | Key::Control | Key::Alt | Key::Super => {}
 
                 _ => {
                     warn!("Unhandled key input: {:?}", key.logical_key)
