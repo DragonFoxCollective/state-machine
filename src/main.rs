@@ -269,14 +269,23 @@ fn update_side_panel_state_name(
 
 fn update_state_names(
     trigger: Trigger<TextInputUnfocused>,
-    text_inputs: Query<(&StateNameTextInput, &TextInput)>,
+    mut text_inputs: Query<(&StateNameTextInput, &mut TextInput)>,
     mut state_types: ResMut<StateTypes>,
+    mut commands: Commands,
 ) -> Result {
-    let (state_name, text_input) = text_inputs.get(trigger.target())?;
+    let (state_name, mut text_input) = text_inputs.get_mut(trigger.target())?;
     let state_type = state_types
         .get_mut(&state_name.0)
         .ok_or("StateType not found")?;
-    state_type.name = text_input.0.clone();
+    if text_input.0.is_empty() {
+        text_input.0 = state_type.name.clone();
+    } else if text_input.0 != state_type.name {
+        state_type.name = text_input.0.clone();
+        commands.trigger(StateTypeNameChanged {
+            state_type: state_name.0.clone(),
+            name: text_input.0.clone(),
+        });
+    }
     Ok(())
 }
 
