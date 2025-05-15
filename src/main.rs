@@ -1,4 +1,5 @@
 use bevy::color::palettes::css;
+use bevy::log::LogPlugin;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -11,7 +12,10 @@ pub mod text_input;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(LogPlugin {
+            filter: "info,wgpu=error,naga=warn,state_machine=debug".into(),
+            ..default()
+        }))
         .add_plugins(TextInputPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, (update_nodes, draw_noodle))
@@ -220,7 +224,7 @@ fn add_state_to_side_panel(
         .0
         .get(&trigger.state_type)
         .ok_or("StateType not found")?;
-    println!("Adding state type to side panel: {:?}", state_type);
+    debug!("Adding state type to side panel: {:?}", state_type);
     for panel in side_panel.iter_mut() {
         commands
             .spawn((
@@ -562,7 +566,7 @@ fn drag_and_drop_connector(
         (Noodle::HangingEnd { .. }, Connector::Exit)
             | (Noodle::HangingStart { .. }, Connector::Enter)
     ) {
-        println!("Noodle connected to wrong side, removing");
+        debug!("Noodle connected to wrong side, removing");
         return Ok(());
     }
 
@@ -571,11 +575,11 @@ fn drag_and_drop_connector(
 			if (*start_connector == new_connector && *end_connector == connector)
 			|| (*start_connector == connector && *end_connector == new_connector))
     }) {
-        println!("Noodle already exists, removing");
+        debug!("Noodle already exists, removing");
         return Ok(());
     }
 
-    println!("Connecting noodle");
+    debug!("Connecting noodle");
     let mut noodle = noodles.get_mut(noodle)?;
     *noodle = match *noodle {
         Noodle::HangingStart { .. } => Noodle::Connected {
@@ -603,7 +607,7 @@ fn stop_dragging_connector(
         Ok(dragged) => dragged.noodle,
         Err(_) => return Ok(()), // Could've been handled by [`drag_and_drop_connector`]
     };
-    println!("Dropping noodle");
+    debug!("Dropping noodle");
     commands.entity(noodle).despawn();
     commands.entity(connector).remove::<DraggedConnector>();
 

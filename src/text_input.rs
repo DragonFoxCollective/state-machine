@@ -1,3 +1,4 @@
+use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 
 pub struct TextInputPlugin;
@@ -6,9 +7,15 @@ impl Plugin for TextInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (focus_text_fields_mouse, focus_text_fields_keyboard).in_set(TextInputSystemSet),
+            (
+                focus_text_fields_mouse,
+                focus_text_fields_keyboard,
+                keyboard_input,
+                update_text.after(keyboard_input),
+            )
+                .in_set(TextInputSystemSet),
         )
-        .add_observer(add_text_to_input);
+        .add_observer(create_rest_of_input);
     }
 }
 
@@ -82,7 +89,7 @@ fn focus_text_fields_keyboard(
     }
 }
 
-fn add_text_to_input(
+fn create_rest_of_input(
     trigger: Trigger<OnAdd, TextInput>,
     text_inputs: Query<&TextInput>,
     mut commands: Commands,
@@ -90,10 +97,64 @@ fn add_text_to_input(
     let text_input_entity = trigger.target();
     let text_input = text_inputs.get(text_input_entity)?;
     let text_input_text_entity = commands
-        .spawn((Text(text_input.0.clone()), ChildOf(text_input_entity)))
+        .spawn((
+            Text(text_input.0.clone()),
+            TextLayout {
+                linebreak: LineBreak::WordOrCharacter,
+                ..default()
+            },
+            ChildOf(text_input_entity),
+        ))
         .id();
     commands
         .entity(text_input_entity)
         .insert(TextInputText(text_input_text_entity));
     Ok(())
+}
+
+fn keyboard_input(
+    mut keys: EventReader<KeyboardInput>,
+    mut text_inputs: Query<(&mut TextInput, &TextInputActive)>,
+) {
+    for key in keys.read() {
+        for (mut text_input, _) in text_inputs
+            .iter_mut()
+            .filter(|(_, active)| **active == TextInputActive::Active)
+        {
+            if !key.state.is_pressed() {
+                continue;
+            };
+
+            match key.logical_key {
+                Key::Character(ref c) => {
+                    text_input.0.push_str(c.as_str());
+                }
+
+                Key::Backspace => {
+                    text_input.0.pop();
+                }
+
+                Key::Space => {
+                    text_input.0.push(' ');
+                }
+
+                Key::Escape | Key::Enter => {}
+
+                _ => {
+                    warn!("Unhandled key input: {:?}", key.logical_key)
+                }
+            }
+        }
+    }
+}
+
+fn update_text(
+    text_inputs: Query<(&TextInput, &TextInputText), Changed<TextInput>>,
+    mut text_input_texts: Query<&mut Text>,
+) {
+    for (text_input, text_input_text) in text_inputs.iter() {
+        if let Ok(mut text) = text_input_texts.get_mut(text_input_text.0) {
+            text.0 = text_input.0.clone();
+        }
+    }
 }
