@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use itertools::Itertools as _;
 use rand::distr::{Distribution, StandardUniform};
-use text_input::{TextInput, TextInputPlugin, TextInputUnfocused};
+use text_input::{TextInput, TextInputFocused, TextInputPlugin, TextInputUnfocused};
 use uuid::Uuid;
 
 pub mod text_input;
@@ -14,17 +14,13 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(TextInputPlugin)
         .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (
-                update_side_panel.run_if(resource_changed::<StateTypes>),
-                update_nodes,
-                draw_noodle,
-            ),
-        )
+        .add_systems(Update, (update_nodes, draw_noodle))
         .add_systems(Update, quit_on_esc)
         .add_observer(add_connector_observers)
         .add_observer(add_node_observers)
+        .add_observer(add_state_to_side_panel)
+        .add_observer(remove_state_from_side_panel)
+        .add_observer(update_side_panel_state_name)
         .run();
 }
 
@@ -89,6 +85,13 @@ fn setup(mut commands: Commands) {
     state_types.insert(state_type_1);
     state_types.insert(state_type_2);
     commands.insert_resource(state_types);
+
+    commands.trigger(StateTypeAdded {
+        state_type: state_type_1_id.clone(),
+    });
+    commands.trigger(StateTypeAdded {
+        state_type: state_type_2_id.clone(),
+    });
 
     for (name, position, state_1, state_2) in [
         ("Idle", Vec2::new(50.0, 50.0), false, false),
@@ -191,30 +194,76 @@ pub struct SidePanel;
 #[derive(Component)]
 pub struct StateNameTextInput(pub StateId);
 
-fn update_side_panel(
+#[derive(Event)]
+pub struct StateTypeAdded {
+    pub state_type: StateId,
+}
+
+#[derive(Event)]
+pub struct StateTypeNameChanged {
+    pub state_type: StateId,
+    pub name: String,
+}
+
+#[derive(Event)]
+pub struct StateTypeRemoved {
+    pub state_type: StateId,
+}
+
+fn add_state_to_side_panel(
+    trigger: Trigger<StateTypeAdded>,
     mut side_panel: Query<Entity, With<SidePanel>>,
     state_types: Res<StateTypes>,
     mut commands: Commands,
-) {
+) -> Result {
+    let state_type = state_types
+        .0
+        .get(&trigger.state_type)
+        .ok_or("StateType not found")?;
+    println!("Adding state type to side panel: {:?}", state_type);
     for panel in side_panel.iter_mut() {
-        commands.entity(panel).despawn_related::<Children>();
+        commands
+            .spawn((
+                Node {
+                    border: UiRect::all(Val::Px(5.0)),
+                    padding: UiRect::all(Val::Px(5.0)),
+                    ..default()
+                },
+                TextInput(state_type.name.clone()),
+                BackgroundColor(css::GRAY.into()),
+                BorderColor(css::BLACK.into()),
+                StateNameTextInput(state_type.id.clone()),
+                ChildOf(panel),
+            ))
+            .observe(update_state_names)
+            .observe(text_field_focused_colors)
+            .observe(text_field_unfocused_colors);
+    }
+    Ok(())
+}
 
-        for state_type in state_types.0.values() {
-            commands
-                .spawn((
-                    Node {
-                        border: UiRect::all(Val::Px(5.0)),
-                        padding: UiRect::all(Val::Px(5.0)),
-                        ..default()
-                    },
-                    TextInput(state_type.name.clone()),
-                    BackgroundColor(css::GRAY.into()),
-                    BorderColor(css::BLACK.into()),
-                    StateNameTextInput(state_type.id.clone()),
-                    ChildOf(panel),
-                ))
-                .observe(update_state_names);
-        }
+fn remove_state_from_side_panel(
+    trigger: Trigger<StateTypeRemoved>,
+    mut commands: Commands,
+    state_name_text_inputs: Query<(Entity, &StateNameTextInput)>,
+) {
+    for (entity, _) in state_name_text_inputs
+        .iter()
+        .filter(|(_, state_name_text_input)| state_name_text_input.0 == trigger.state_type)
+    {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn update_side_panel_state_name(
+    trigger: Trigger<StateTypeNameChanged>,
+    mut state_name_text_inputs: Query<(&StateNameTextInput, &mut TextInput)>,
+) {
+    for (_, mut text_input) in state_name_text_inputs
+        .iter_mut()
+        .filter(|(state_name_text_input, _)| state_name_text_input.0 == trigger.state_type)
+    {
+        text_input.0 = trigger.name.clone();
     }
 }
 
@@ -228,6 +277,24 @@ fn update_state_names(
         .get_mut(&state_name.0)
         .ok_or("StateType not found")?;
     state_type.name = text_input.0.clone();
+    Ok(())
+}
+
+fn text_field_focused_colors(
+    trigger: Trigger<TextInputFocused>,
+    mut text_inputs: Query<&mut BorderColor>,
+) -> Result {
+    let mut border_color = text_inputs.get_mut(trigger.target())?;
+    border_color.0 = css::WHITE.into();
+    Ok(())
+}
+
+fn text_field_unfocused_colors(
+    trigger: Trigger<TextInputUnfocused>,
+    mut text_inputs: Query<&mut BorderColor>,
+) -> Result {
+    let mut border_color = text_inputs.get_mut(trigger.target())?;
+    border_color.0 = css::BLACK.into();
     Ok(())
 }
 
