@@ -6,7 +6,7 @@ impl Plugin for TextInputPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (focus_text_fields_mouse, focus_text_fields_keyboard),
+            (focus_text_fields_mouse, focus_text_fields_keyboard).in_set(TextInputSystemSet),
         );
     }
 }
@@ -30,6 +30,9 @@ pub enum TextInputActive {
     #[default]
     Inactive,
 }
+
+#[derive(SystemSet, Hash, Debug, Clone, Eq, PartialEq)]
+pub struct TextInputSystemSet;
 
 fn focus_text_fields_mouse(
     buttons: Res<ButtonInput<MouseButton>>,
