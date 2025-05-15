@@ -4,11 +4,15 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use itertools::Itertools as _;
 use rand::distr::{Distribution, StandardUniform};
+use text_input::{TextInput, TextInputPlugin, TextInputUnfocused};
 use uuid::Uuid;
+
+pub mod text_input;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(TextInputPlugin)
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -54,10 +58,11 @@ fn setup(mut commands: Commands) {
 
     let _side_panel_text = commands
         .spawn((
-            SidePanelText,
+            SidePanel,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
             ChildOf(side_panel),
@@ -123,7 +128,7 @@ fn setup(mut commands: Commands) {
     }
 }
 
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug, Default, Deref, DerefMut)]
 pub struct StateTypes(HashMap<StateId, StateTypeData>);
 
 impl StateTypes {
@@ -181,21 +186,49 @@ pub struct State {
 }
 
 #[derive(Component)]
-#[require(Text)]
-pub struct SidePanelText;
+pub struct SidePanel;
+
+#[derive(Component)]
+pub struct StateNameTextInput(pub StateId);
 
 fn update_side_panel(
-    mut side_panel: Query<&mut Text, With<SidePanelText>>,
+    mut side_panel: Query<Entity, With<SidePanel>>,
     state_types: Res<StateTypes>,
+    mut commands: Commands,
 ) {
-    for mut text in side_panel.iter_mut() {
-        text.0 = state_types
-            .0
-            .iter()
-            .map(|state_type| state_type.1.name.clone())
-            .sorted()
-            .join("\n");
+    for panel in side_panel.iter_mut() {
+        commands.entity(panel).despawn_related::<Children>();
+
+        for state_type in state_types.0.values() {
+            commands
+                .spawn((
+                    Node {
+                        border: UiRect::all(Val::Px(5.0)),
+                        padding: UiRect::all(Val::Px(5.0)),
+                        ..default()
+                    },
+                    TextInput(state_type.name.clone()),
+                    BackgroundColor(css::GRAY.into()),
+                    BorderColor(css::BLACK.into()),
+                    StateNameTextInput(state_type.id.clone()),
+                    ChildOf(panel),
+                ))
+                .observe(update_state_names);
+        }
     }
+}
+
+fn update_state_names(
+    trigger: Trigger<TextInputUnfocused>,
+    text_inputs: Query<(&StateNameTextInput, &TextInput)>,
+    mut state_types: ResMut<StateTypes>,
+) -> Result {
+    let (state_name, text_input) = text_inputs.get(trigger.target())?;
+    let state_type = state_types
+        .get_mut(&state_name.0)
+        .ok_or("StateType not found")?;
+    state_type.name = text_input.0.clone();
+    Ok(())
 }
 
 fn update_nodes(
